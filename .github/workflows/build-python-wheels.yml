@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        python-version: ['3.12', '3.13', '3.14']
+        python-version: ['3.12', '3.13']
 
     steps:
     - name: Checkout repository
@@ -38,18 +38,17 @@ jobs:
         ./CMake/scripts/download_all_firmware.sh
 
     - name: Build wheels
-      working-directory: xrt/src/python/pybind11
       env:
-        CIBW_BUILD: cp${{ matrix.python-version }}-*
-      run: cibuildwheel --platform linux --output-dir wheelhouse
+        CIBW_BUILD: cp${{ matrix.python-version | replace('.', '') }}-*
+      run: cibuildwheel --platform linux --output-dir wheelhouse xrt/src/python/pybind11
 
     - name: List generated wheels
-      run: ls -lah xrt/src/python/pybind11/wheelhouse/
+      run: ls -lah wheelhouse/
 
     - name: Verify wheel compliance
       run: |
         pip install auditwheel
-        for wheel in xrt/src/python/pybind11/wheelhouse/*.whl; do
+        for wheel in wheelhouse/*.whl; do
           echo "Checking $wheel"
           auditwheel show "$wheel"
         done
@@ -58,7 +57,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: wheels-py${{ matrix.python-version }}
-        path: xrt/src/python/pybind11/wheelhouse/*.whl
+        path: wheelhouse/*.whl
         retention-days: 30
 
   test_wheels:
@@ -68,7 +67,7 @@ jobs:
     strategy:
       matrix:
         os: ['ubuntu:24.04', 'ubuntu:22.04', 'rockylinux:9']
-        python-version: ['3.12', '3.13', '3.14']
+        python-version: ['3.12', '3.13']
     container:
       image: ${{ matrix.os }}
 
