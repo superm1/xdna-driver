@@ -14,7 +14,11 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        python-version: ['3.12', '3.13']
+        include:
+          - python-version: '3.12'
+            cibw-build: 'cp312-*'
+          - python-version: '3.13'
+            cibw-build: 'cp313-*'
 
     steps:
     - name: Checkout repository
@@ -39,7 +43,7 @@ jobs:
 
     - name: Build wheels
       env:
-        CIBW_BUILD: cp${{ matrix.python-version | replace('.', '') }}-*
+        CIBW_BUILD: ${{ matrix.cibw-build }}
       run: cibuildwheel --platform linux --output-dir wheelhouse xrt/src/python/pybind11
 
     - name: List generated wheels
