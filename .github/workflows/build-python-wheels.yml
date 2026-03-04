@@ -1,0 +1,100 @@
+name: Build Python Wheels
+
+on:
+  push:
+    tags: ['*']
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build_wheels:
+    name: Build wheels for Python ${{ matrix.python-version }}
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python-version: ['3.12', '3.13', '3.14']
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+        submodules: recursive
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install cibuildwheel
+      run: pip install cibuildwheel
+
+    - name: Download firmware files
+      run: |
+        echo "Downloading all firmware files..."
+        ./CMake/scripts/download_all_firmware.sh
+
+    - name: Build wheels
+      working-directory: xrt/src/python/pybind11
+      env:
+        CIBW_BUILD: cp${{ matrix.python-version }}-*
+      run: cibuildwheel --platform linux --output-dir wheelhouse
+
+    - name: List generated wheels
+      run: ls -lah xrt/src/python/pybind11/wheelhouse/
+
+    - name: Verify wheel compliance
+      run: |
+        pip install auditwheel
+        for wheel in xrt/src/python/pybind11/wheelhouse/*.whl; do
+          echo "Checking $wheel"
+          auditwheel show "$wheel"
+        done
+
+    - name: Upload wheel artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: wheels-py${{ matrix.python-version }}
+        path: xrt/src/python/pybind11/wheelhouse/*.whl
+        retention-days: 30
+
+  test_wheels:
+    needs: build_wheels
+    name: Test wheel on ${{ matrix.os }} - Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: ['ubuntu:24.04', 'ubuntu:22.04', 'rockylinux:9']
+        python-version: ['3.12', '3.13', '3.14']
+    container:
+      image: ${{ matrix.os }}
+
+    steps:
+    - name: Download wheel artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: wheels-py${{ matrix.python-version }}
+        path: wheels/
+
+    - name: Install Python
+      run: |
+        if command -v apt-get &> /dev/null; then
+          apt-get update && apt-get install -y python${{ matrix.python-version }} python3-pip
+        else
+          dnf install -y python${{ matrix.python-version }} python3-pip
+        fi
+
+    - name: Install wheel
+      run: pip install wheels/*.whl
+
+    - name: Test import
+      run: |
+        python${{ matrix.python-version }} -c "import pyxrt; print(f'XRT version: {pyxrt.__version__}')"
+        python${{ matrix.python-version }} -c "from pyxrt import device, bo, kernel, enumerate_devices"
+        python${{ matrix.python-version }} -c "print(f'Devices found: {len(pyxrt.enumerate_devices())}')"
+
+    - name: Display package info
+      run: pip show xrt
